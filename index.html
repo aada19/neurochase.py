@@ -15,7 +15,7 @@
 <div class="wrap">
 <header><div><div class="eyebrow">HUMAN INTELLIGENCE × MACHINE LEARNING</div><h1>NEURO<span>CHASE</span></h1><p>The more you play, the smarter it gets.</p></div><div class="pill">● OFFLINE LEARNING AI · NO API REQUIRED</div></header>
 <div class="layout"><main class="arena">
-<div class="toolbar"><div class="stat">ROUND<b id="round">1</b></div><div class="stat">SCORE<b id="score">0</b></div><div class="stat">LIVES<b id="lives">♥ ♥ ♥</b></div><div class="stat">AI LEVEL<b id="level">1 · Searching</b></div><button id="showAI" class="primary">🧠 SHOW AI</button><button id="pause">Pause</button><button id="reset" class="danger">Reset</button></div>
+<div class="toolbar"><div class="stat">ROUND<b id="round">1</b></div><div class="stat">SCORE<b id="score">0</b></div><div class="stat">LIVES<b id="lives">♥ ♥ ♥</b></div><div class="stat">AI LEVEL<b id="level">1 · Searching</b></div><button id="showAI" class="primary">🧠 SHOW AI</button><button id="pause">Pause</button><button id="resume">↻ Resume game</button><button id="reset" class="danger">Reset</button></div>
 <div class="board"><canvas id="game" width="840" height="600" tabindex="0" aria-label="Maze game. Use arrow keys or WASD to reach the golden exit while avoiding the red AI robot."></canvas>
 <div id="overlay" class="overlay"><div class="eyebrow">AI CLUB EXHIBITION</div><h2>CAN YOU OUTSMART THE AI?</h2><p>Reach the <span class="callout">gold exit</span>. Avoid the red robot. Each successful move teaches the robot what you might do next.</p><button id="start" class="primary">▶ START CHALLENGE</button><small>ARROWS / WASD TO MOVE · SPACE TO PAUSE · B TO SHOW AI</small></div></div>
 <div class="mobile" aria-label="Touch movement controls"><div class="pad"><button class="up" data-dir="UP">↑</button><button class="left" data-dir="LEFT">←</button><button class="down" data-dir="DOWN">↓</button><button class="right" data-dir="RIGHT">→</button></div></div>
@@ -80,12 +80,40 @@ function updateUI(){let total=count(),s=stage(),pct=Math.min(100,Math.round(tota
 function draw(){ctx.clearRect(0,0,840,600);ctx.fillStyle="#071322";ctx.fillRect(0,0,840,600);for(let y=0;y<H;y++)for(let x=0;x<W;x++){let px=x*T,py=y*T;if(maze[y][x]){ctx.fillStyle="#233953";ctx.fillRect(px+1,py+1,T-2,T-2);ctx.strokeStyle="#344f6d";ctx.strokeRect(px+1.5,py+1.5,T-3,T-3)}else{ctx.fillStyle=(x+y)%2?"#0c1e34":"#0d2239";ctx.fillRect(px,py,T,T)}}
  const gx=goal.x*T+T/2,gy=goal.y*T+T/2;ctx.save();ctx.shadowColor="#ffce62";ctx.shadowBlur=20;ctx.fillStyle="#ffce62";ctx.fillRect(gx-11,gy-11,22,22);ctx.restore();ctx.fillStyle="#4d310b";ctx.font="bold 19px sans-serif";ctx.textAlign="center";ctx.fillText("★",gx,gy+7);
  const px=player.x*T+T/2,py=player.y*T+T/2;ctx.save();ctx.shadowColor="#4de3ed";ctx.shadowBlur=18;ctx.fillStyle="#4de3ed";ctx.beginPath();ctx.arc(px,py,13,0,Math.PI*2);ctx.fill();ctx.fillStyle="#09263a";ctx.beginPath();ctx.arc(px+3,py-4,3,0,Math.PI*2);ctx.fill();ctx.restore();
- const bx=bot.x*T+T/2,by=bot.y*T+T/2;ctx.save();ctx.shadowColor="#ff607b";ctx.shadowBlur=19;ctx.fillStyle="#ff607b";ctx.beginPath();ctx.roundRect(bx-15,by-14,30,28,7);ctx.fill();ctx.fillStyle="#fff";ctx.fillRect(bx-9,by-5,6,6);ctx.fillRect(bx+3,by-5,6,6);ctx.restore();}
-function frame(now){if(mode==="playing"){if(held&&now-lastStep>115){movePlayer(held);lastStep=now}let interval=stage()===1?440:stage()===2?325:250;if(now-lastBot>interval){pursue();lastBot=now}}draw();requestAnimationFrame(frame)}
-$("start").addEventListener("click",next);$("showAI").addEventListener("click",showAnalysis);$("closeAI").addEventListener("click",closeAnalysis);$("analysis").addEventListener("close",()=>{if(pausedForDialog){mode="playing";lastBot=performance.now();lastStep=performance.now();pausedForDialog=false}updateUI()});$("pause").addEventListener("click",togglePause);$("reset").addEventListener("click",reset);
+ const bx=bot.x*T+T/2,by=bot.y*T+T/2;ctx.save();ctx.shadowColor="#ff607b";ctx.shadowBlur=19;ctx.fillStyle="#ff607b";ctx.beginPath();if(typeof ctx.roundRect==="function"){ctx.roundRect(bx-15,by-14,30,28,7)}else{ctx.rect(bx-15,by-14,30,28)}ctx.fill();ctx.fillStyle="#fff";ctx.fillRect(bx-9,by-5,6,6);ctx.fillRect(bx+3,by-5,6,6);ctx.restore();}
+let latestFrame=performance.now(),loopErrorCount=0;
+function frame(now){
+  // Register the next frame FIRST. An unexpected rendering or AI error
+  // must never silently kill the animation loop.
+  requestAnimationFrame(frame);latestFrame=now;
+  try {
+    if(mode==="playing"){
+      if(held&&now-lastStep>115){movePlayer(held);lastStep=now}
+      const interval=stage()===1?440:stage()===2?325:250;
+      if(now-lastBot>interval){pursue();lastBot=now}
+    }
+    draw();
+    loopErrorCount=0;
+  } catch(err){
+    console.error("NEUROCHASE frame recovered:",err);
+    loopErrorCount++;
+    held=null;
+    if(loopErrorCount===1){feedback="A temporary game error was recovered. Use Resume game if controls seem stuck.";try{updateUI()}catch(e){}}
+  }
+}
+function resumeGame(){
+  held=null;lastBot=performance.now();lastStep=performance.now();
+  if($("analysis").open)closeAnalysis();
+  if(mode==="paused"||mode==="analysis"){mode="playing";$("overlay").hidden=true}
+  if(mode==="intro"||mode==="won"||mode==="lost")next();
+  feedback="Game active. Click the maze and use WASD or arrow keys.";
+  updateUI();canvas.focus({preventScroll:true});
+}
+
+$("start").addEventListener("click",next);$("showAI").addEventListener("click",showAnalysis);$("closeAI").addEventListener("click",closeAnalysis);$("analysis").addEventListener("close",()=>{if(pausedForDialog){mode="playing";lastBot=performance.now();lastStep=performance.now();pausedForDialog=false}updateUI()});$("pause").addEventListener("click",togglePause);$("resume").addEventListener("click",resumeGame);$("reset").addEventListener("click",reset);
 const kmap={ArrowUp:"UP",ArrowDown:"DOWN",ArrowLeft:"LEFT",ArrowRight:"RIGHT",w:"UP",s:"DOWN",a:"LEFT",d:"RIGHT",W:"UP",S:"DOWN",A:"LEFT",D:"RIGHT"};
 window.addEventListener("keydown",e=>{if($("analysis").open)return;if(kmap[e.key]){e.preventDefault();held=kmap[e.key];if(!e.repeat)movePlayer(held)}if(e.key===" "){e.preventDefault();togglePause()}if(e.key.toLowerCase()==="b")showAnalysis()});
-window.addEventListener("keyup",e=>{if(kmap[e.key]===held)held=null});window.addEventListener("blur",()=>held=null);
+window.addEventListener("keyup",e=>{if(kmap[e.key]===held)held=null});window.addEventListener("blur",()=>held=null);canvas.addEventListener("pointerdown",()=>canvas.focus({preventScroll:true}));
 document.querySelectorAll("[data-dir]").forEach(b=>{b.addEventListener("pointerdown",e=>{e.preventDefault();held=b.dataset.dir;movePlayer(held);lastStep=performance.now()});["pointerup","pointercancel","pointerleave"].forEach(ev=>b.addEventListener(ev,()=>held=null))});
 generate();updateUI();requestAnimationFrame(frame);
 </script></body></html>
